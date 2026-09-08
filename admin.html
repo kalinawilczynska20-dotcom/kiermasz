@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>Panel organizatora</title>
+
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+
+</head>
+
+<body>
+
+<header class="hero admin-hero">
+
+  <div>
+
+    <div class="eyebrow">
+      ⚙️ ORGANIZATOR
+    </div>
+
+    <h1>
+      Panel kiermaszu
+    </h1>
+
+    <p>
+      Dodawaj książki i aktualizuj ich stan.
+    </p>
+
+  </div>
+
+  <a
+    href="index.html"
+    class="admin-link"
+  >
+    ← Strona kupujących
+  </a>
+
+</header>
+
+<main class="container">
+
+<section
+  id="loginBox"
+  class="panel"
+>
+
+  <h2>
+    Logowanie organizatora
+  </h2>
+
+  <p class="muted">
+    Zaloguj się kontem organizatora.
+  </p>
+
+  <form id="loginForm">
+
+    <input
+      id="email"
+      type="email"
+      placeholder="E-mail"
+      required
+    >
+
+    <input
+      id="password"
+      type="password"
+      placeholder="Hasło"
+      required
+    >
+
+    <button type="submit">
+      🔐 Zaloguj
+    </button>
+
+    <p
+      id="loginError"
+      class="error"
+    ></p>
+
+  </form>
+
+</section>
+
+<section
+  id="appBox"
+  class="hidden"
+>
+
+<section class="panel">
+
+  <div class="panel-header">
+
+    <h2>
+      Dodaj książkę
+    </h2>
+
+    <button
+      id="logout"
+      class="secondary"
+    >
+      Wyloguj
+    </button>
+
+  </div>
+
+  <form
+    id="bookForm"
+    class="book-form"
+  >
+
+    <input
+      id="title"
+      placeholder="Tytuł książki *"
+      required
+    >
+
+    <input
+      id="subject"
+      placeholder="Przedmiot"
+    >
+
+    <input
+      id="className"
+      placeholder="Klasa"
+    >
+
+    <input
+      id="price"
+      type="number"
+      min="0"
+      step="0.01"
+      placeholder="Cena (zł)"
+      required
+    >
+
+    <input
+      id="stock"
+      type="number"
+      min="0"
+      placeholder="Liczba sztuk"
+      required
+    >
+
+    <input
+      id="image"
+      placeholder="Link do zdjęcia"
+    >
+
+    <button type="submit">
+      ➕ Dodaj książkę
+    </button>
+
+  </form>
+
+</section>
+
+<section class="panel">
+
+  <div class="panel-header">
+
+    <h2>
+      Książki
+    </h2>
+
+    <span
+      id="count"
+      class="muted"
+    ></span>
+
+  </div>
+
+  <div id="adminBooks"></div>
+
+</section>
+
+</section>
+
+</main>
+
+<script type="module">
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDydhZ5DRkS8uqQCwl4GS9jdecxpMBrvLw",
+  authDomain: "kiermasz-edf65.firebaseapp.com",
+  databaseURL: "https://kiermasz-edf65-default-rtdb.firebaseio.com/",
+  projectId: "kiermasz-edf65",
+  storageBucket: "kiermasz-edf65.firebasestorage.app",
+  messagingSenderId: "24113147575",
+  appId: "1:24113147575:web:20c3bee6d1df4451876732"
+};
+
+import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+
+import {
+  getDatabase,
+  ref,
+  push,
+  set,
+  remove,
+  update,
+  onValue
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+const app = initializeApp(firebaseConfig);
+
+const database = getDatabase(app);
+const auth = getAuth(app);
+
+const loginBox = document.getElementById("loginBox");
+const appBox = document.getElementById("appBox");
+const loginForm = document.getElementById("loginForm");
+const loginError = document.getElementById("loginError");
+const bookForm = document.getElementById("bookForm");
+const adminBooks = document.getElementById("adminBooks");
+const count = document.getElementById("count");
+
+let books = [];
+
+loginForm.addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+    loginError.textContent = "";
+
+    try {
+
+      await signInWithEmailAndPassword(
+        auth,
+        document.getElementById("email").value,
+        document.getElementById("password").value
+      );
+
+    } catch (error) {
+
+      console.error(error);
+
+      loginError.textContent =
+        "Nieprawidłowy e-mail lub hasło.";
+
+    }
+
+  }
+);
+
+document
+  .getElementById("logout")
+  .addEventListener(
+    "click",
+    () => signOut(auth)
+  );
+
+onAuthStateChanged(
+  auth,
+  user => {
+
+    if (user) {
+
+      loginBox.classList.add("hidden");
+      appBox.classList.remove("hidden");
+
+      loadBooks();
+
+    } else {
+
+      loginBox.classList.remove("hidden");
+      appBox.classList.add("hidden");
+
+    }
+
+  }
+);
+
+function loadBooks() {
+
+  onValue(
+    ref(database, "books"),
+
+    snapshot => {
+
+      const data = snapshot.val() || {};
+
+      books =
+        Object.entries(data)
+          .map(([id, book]) => ({
+            id,
+            ...book
+          }));
+
+      books.sort(
+        (a, b) =>
+          String(a.title || "")
+            .localeCompare(
+              String(b.title || ""),
+              "pl"
+            )
+      );
+
+      renderAdmin();
+
+    }
+  );
+
+}
+
+function renderAdmin() {
+
+  count.textContent =
+    `${books.length} ${
+      books.length === 1
+        ? "książka"
+        : "książek"
+    }`;
+
+  if (books.length === 0) {
+
+    adminBooks.innerHTML = `
+      <p class="muted">
+        Nie ma jeszcze żadnych książek.
+      </p>
+    `;
+
+    return;
+  }
+
+  adminBooks.innerHTML =
+    books.map(book => {
+
+      const stock =
+        Math.max(
+          0,
+          Number(book.stock || 0)
+        );
+
+      return `
+
+        <div class="admin-row">
+
+          <div class="admin-info">
+
+            <strong>
+              ${escapeHTML(book.title)}
+            </strong>
+
+            <span>
+              ${escapeHTML(book.subject || "")}
+
+              ${
+                book.className
+                  ? " · " + escapeHTML(book.className)
+                  : ""
+              }
+            </span>
+
+            <b>
+              ${Number(book.price || 0)
+                .toFixed(2)
+                .replace(".", ",")} zł
+              ·
+              ${stock} szt.
+            </b>
+
+          </div>
+
+          <div class="actions">
+
+            <button
+              data-action="minus"
+              data-id="${escapeHTML(book.id)}"
+            >
+              −1
+            </button>
+
+            <button
+              data-action="plus"
+              data-id="${escapeHTML(book.id)}"
+            >
+              +1
+            </button>
+
+            <button
+              class="secondary"
+              data-action="delete"
+              data-id="${escapeHTML(book.id)}"
+            >
+              Usuń
+            </button>
+
+          </div>
+
+        </div>
+      `;
+
+    }).join("");
+
+}
+
+bookForm.addEventListener(
+  "submit",
+  async event => {
+
+    event.preventDefault();
+
+    const newBook =
+      push(ref(database, "books"));
+
+    await set(
+      newBook,
+      {
+
+        title:
+          document
+            .getElementById("title")
+            .value
+            .trim(),
+
+        subject:
+          document
+            .getElementById("subject")
+            .value
+            .trim(),
+
+        className:
+          document
+            .getElementById("className")
+            .value
+            .trim(),
+
+        price:
+          Number(
+            document
+              .getElementById("price")
+              .value || 0
+          ),
+
+        stock:
+          Math.max(
+            0,
+            Number(
+              document
+                .getElementById("stock")
+                .value || 0
+            )
+          ),
+
+        image:
+          document
+            .getElementById("image")
+            .value
+            .trim()
+
+      }
+    );
+
+    bookForm.reset();
+
+  }
+);
+
+adminBooks.addEventListener(
+  "click",
+  async event => {
+
+    const button =
+      event.target.closest("button");
+
+    if (!button) return;
+
+    const id =
+      button.dataset.id;
+
+    const book =
+      books.find(
+        item => item.id === id
+      );
+
+    if (!book) return;
+
+    const action =
+      button.dataset.action;
+
+    if (action === "delete") {
+
+      const confirmed =
+        confirm(
+          `Usunąć książkę „${book.title}”?`
+        );
+
+      if (confirmed) {
+
+        await remove(
+          ref(database, `books/${id}`)
+        );
+
+      }
+
+      return;
+    }
+
+    const currentStock =
+      Number(book.stock || 0);
+
+    const change =
+      action === "plus"
+        ? 1
+        : -1;
+
+    const newStock =
+      Math.max(
+        0,
+        currentStock + change
+      );
+
+    await update(
+      ref(database, `books/${id}`),
+      {
+        stock: newStock
+      }
+    );
+
+  }
+);
+
+function escapeHTML(value) {
+
+  return String(value ?? "")
+    .replace(/[&<>"']/g, character => {
+
+      const entities = {
+
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+
+      };
+
+      return entities[character];
+
+    });
+
+}
+
+</script>
+
+</body>
+</html>
