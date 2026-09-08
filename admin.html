@@ -70,8 +70,15 @@
 
     </div>
 
+    <!-- WYSZUKIWANIE -->
 
-    <!-- DODAWANIE -->
+    <input
+      type="text"
+      id="adminSearch"
+      placeholder="🔎 Szukaj książki..."
+    >
+
+    <!-- DODAWANIE KSIĄŻKI -->
 
     <div class="admin-form">
 
@@ -114,4 +121,540 @@
             id="priceTo"
             placeholder="Cena do (zł)"
             min="0"
-           
+            step="0.01"
+            required
+          >
+
+        </div>
+
+        <input
+          type="number"
+          id="stock"
+          placeholder="Liczba sztuk"
+          min="0"
+          step="1"
+          required
+        >
+
+        <input
+          type="url"
+          id="image"
+          placeholder="Link do zdjęcia (opcjonalnie)"
+        >
+
+        <button type="submit">
+          Dodaj książkę
+        </button>
+
+      </form>
+
+      <p id="bookMessage"></p>
+
+    </div>
+
+    <!-- LISTA KSIĄŻEK -->
+
+    <div id="booksList"></div>
+
+  </section>
+
+</main>
+
+
+<!-- FIREBASE -->
+
+<script type="module">
+
+  import {
+    initializeApp
+  } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+
+  import {
+    getAuth,
+    signInWithEmailAndPassword,
+    onAuthStateChanged,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+  import {
+    getDatabase,
+    ref,
+    push,
+    set,
+    onValue,
+    update,
+    remove
+  } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+
+  // KONFIGURACJA FIREBASE
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDydh5DRkS8uqQCwl4GS9jdecxpMBrvLw",
+    authDomain: "kiermasz-edf65.firebaseapp.com",
+    projectId: "kiermasz-edf65",
+    storageBucket: "kiermasz-edf65.firebasestorage.app",
+    messagingSenderId: "24113147575",
+    appId: "1:24113147575:web:20c3bee6d1df4451876732"
+  };
+
+
+  // URUCHOMIENIE FIREBASE
+
+  const app = initializeApp(firebaseConfig);
+
+  const auth = getAuth(app);
+
+  const database = getDatabase(app);
+
+
+  // ELEMENTY STRONY
+
+  const loginSection = document.getElementById("loginSection");
+  const adminSection = document.getElementById("adminSection");
+
+  const loginForm = document.getElementById("loginForm");
+  const loginMessage = document.getElementById("loginMessage");
+
+  const logoutButton = document.getElementById("logoutButton");
+
+  const bookForm = document.getElementById("bookForm");
+  const bookMessage = document.getElementById("bookMessage");
+
+  const booksList = document.getElementById("booksList");
+  const booksCount = document.getElementById("booksCount");
+
+  const adminSearch = document.getElementById("adminSearch");
+
+
+  // TEST URUCHOMIENIA
+
+  loginMessage.textContent = "✅ Strona logowania działa.";
+
+
+  // LOGOWANIE
+
+  loginForm.addEventListener("submit", async (event) => {
+
+    event.preventDefault();
+
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    loginMessage.textContent = "⏳ Logowanie...";
+    loginMessage.style.color = "";
+
+
+    try {
+
+      await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      loginMessage.textContent = "✅ Zalogowano!";
+
+    } catch (error) {
+
+      console.error(error);
+
+      let message = "❌ Nie udało się zalogować.";
+
+      if (error.code === "auth/invalid-credential") {
+        message = "❌ Nieprawidłowy e-mail lub hasło.";
+      }
+
+      else if (error.code === "auth/invalid-email") {
+        message = "❌ Nieprawidłowy adres e-mail.";
+      }
+
+      else if (error.code === "auth/user-disabled") {
+        message = "❌ To konto jest wyłączone.";
+      }
+
+      else if (error.code === "auth/too-many-requests") {
+        message = "❌ Za dużo prób logowania. Spróbuj później.";
+      }
+
+      else if (error.code === "auth/network-request-failed") {
+        message = "❌ Problem z połączeniem z internetem.";
+      }
+
+      else {
+        message = "❌ Błąd Firebase: " + error.code;
+      }
+
+      loginMessage.textContent = message;
+
+    }
+
+  });
+
+
+  // SPRAWDZANIE, CZY UŻYTKOWNIK JEST ZALOGOWANY
+
+  onAuthStateChanged(auth, (user) => {
+
+    if (user) {
+
+      loginSection.style.display = "none";
+      adminSection.style.display = "block";
+
+      loadBooks();
+
+    } else {
+
+      loginSection.style.display = "block";
+      adminSection.style.display = "none";
+
+    }
+
+  });
+
+
+  // WYLOGOWANIE
+
+  logoutButton.addEventListener("click", async () => {
+
+    await signOut(auth);
+
+  });
+
+
+  // DODAWANIE KSIĄŻKI
+
+  bookForm.addEventListener("submit", async (event) => {
+
+    event.preventDefault();
+
+    bookMessage.textContent = "⏳ Dodawanie książki...";
+
+    const title = document.getElementById("title").value.trim();
+    const subject = document.getElementById("subject").value.trim();
+    const className = document.getElementById("className").value.trim();
+
+    const priceFrom = Number(
+      document.getElementById("priceFrom").value
+    );
+
+    const priceTo = Number(
+      document.getElementById("priceTo").value
+    );
+
+    const stock = Number(
+      document.getElementById("stock").value
+    );
+
+    const image = document.getElementById("image").value.trim();
+
+
+    try {
+
+      const newBookRef = push(
+        ref(database, "books")
+      );
+
+      await set(newBookRef, {
+
+        title: title,
+
+        subject: subject,
+
+        className: className,
+
+        priceFrom: priceFrom,
+
+        priceTo: priceTo,
+
+        stock: stock,
+
+        image: image
+
+      });
+
+      bookForm.reset();
+
+      bookMessage.textContent = "✅ Książka została dodana.";
+
+    } catch (error) {
+
+      console.error(error);
+
+      bookMessage.textContent =
+        "❌ Nie udało się dodać książki: " + error.message;
+
+    }
+
+  });
+
+
+  // POBIERANIE KSIĄŻEK
+
+  let allBooks = {};
+
+
+  function loadBooks() {
+
+    const booksRef = ref(database, "books");
+
+    onValue(booksRef, (snapshot) => {
+
+      allBooks = snapshot.val() || {};
+
+      renderBooks();
+
+    }, (error) => {
+
+      console.error(error);
+
+      booksList.innerHTML =
+        "<p>❌ Nie udało się pobrać książek: " +
+        error.message +
+        "</p>";
+
+    });
+
+  }
+
+
+  // WYŚWIETLANIE KSIĄŻEK
+
+  function renderBooks() {
+
+    const search =
+      adminSearch.value.trim().toLowerCase();
+
+
+    const entries = Object.entries(allBooks);
+
+    const filtered = entries.filter(([id, book]) => {
+
+      const text = [
+
+        book.title,
+        book.subject,
+        book.className
+
+      ].join(" ").toLowerCase();
+
+      return text.includes(search);
+
+    });
+
+
+    booksCount.textContent =
+      "Liczba książek: " + filtered.length;
+
+
+    booksList.innerHTML = "";
+
+
+    if (filtered.length === 0) {
+
+      booksList.innerHTML =
+        "<p>Brak książek.</p>";
+
+      return;
+
+    }
+
+
+    filtered.forEach(([id, book]) => {
+
+      const card = document.createElement("div");
+
+      card.className = "book-card";
+
+
+      let priceText = "";
+
+      if (
+        book.priceFrom !== undefined &&
+        book.priceTo !== undefined
+      ) {
+
+        priceText =
+          `${book.priceFrom}–${book.priceTo} zł`;
+
+      }
+
+      else if (book.price !== undefined) {
+
+        priceText =
+          `${book.price} zł`;
+
+      }
+
+
+      card.innerHTML = `
+
+        <h3>${escapeHtml(book.title || "")}</h3>
+
+        <p>
+          ${escapeHtml(book.subject || "")}
+          ${book.className
+            ? " • " + escapeHtml(book.className)
+            : ""}
+        </p>
+
+        <p>
+          💰 ${priceText}
+        </p>
+
+        <p>
+          📦 Sztuk: <strong>${Number(book.stock || 0)}</strong>
+        </p>
+
+        <div class="stock-buttons">
+
+          <button
+            class="secondary-button"
+            data-action="minus"
+            data-id="${id}"
+          >
+            −1
+          </button>
+
+          <button
+            data-action="plus"
+            data-id="${id}"
+          >
+            +1
+          </button>
+
+          <button
+            class="secondary-button"
+            data-action="delete"
+            data-id="${id}"
+          >
+            🗑 Usuń
+          </button>
+
+        </div>
+
+      `;
+
+
+      booksList.appendChild(card);
+
+    });
+
+  }
+
+
+  // OBSŁUGA PRZYCISKÓW +1 / -1 / USUŃ
+
+  booksList.addEventListener("click", async (event) => {
+
+    const button =
+      event.target.closest("button");
+
+    if (!button) return;
+
+
+    const action =
+      button.dataset.action;
+
+    const id =
+      button.dataset.id;
+
+    const book =
+      allBooks[id];
+
+    if (!book) return;
+
+
+    try {
+
+      if (action === "plus") {
+
+        await update(
+          ref(database, "books/" + id),
+          {
+            stock: Number(book.stock || 0) + 1
+          }
+        );
+
+      }
+
+
+      if (action === "minus") {
+
+        const currentStock =
+          Number(book.stock || 0);
+
+        const newStock =
+          Math.max(0, currentStock - 1);
+
+
+        await update(
+          ref(database, "books/" + id),
+          {
+            stock: newStock
+          }
+        );
+
+      }
+
+
+      if (action === "delete") {
+
+        const confirmed =
+          confirm(
+            "Czy na pewno chcesz usunąć tę książkę?"
+          );
+
+        if (!confirmed) return;
+
+
+        await remove(
+          ref(database, "books/" + id)
+        );
+
+      }
+
+    } catch (error) {
+
+      console.error(error);
+
+      alert(
+        "Wystąpił błąd: " +
+        error.message
+      );
+
+    }
+
+  });
+
+
+  // WYSZUKIWANIE
+
+  adminSearch.addEventListener(
+    "input",
+    renderBooks
+  );
+
+
+  // ZABEZPIECZENIE TEKSTU
+
+  function escapeHtml(text) {
+
+    return String(text)
+
+      .replaceAll("&", "&amp;")
+
+      .replaceAll("<", "&lt;")
+
+      .replaceAll(">", "&gt;")
+
+      .replaceAll('"', "&quot;")
+
+      .replaceAll("'", "&#039;");
+
+  }
+
+</script>
+
+</body>
+</html>
