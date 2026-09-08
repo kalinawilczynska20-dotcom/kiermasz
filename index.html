@@ -9,264 +9,235 @@
 
 <body>
 
-<header class="hero">
-  <div>
-    <div class="eyebrow">📚 SZKOLNY KIERMASZ</div>
-    <h1>Podręczniki na sprzedaż</h1>
-    <p>Sprawdź dostępne książki, ceny i liczbę sztuk.</p>
-  </div>
+  <header class="hero">
+    <div class="hero-content">
+      <h1>📚 Kiermasz podręczników</h1>
+      <p>Sprawdź dostępne książki i ich ceny</p>
+    </div>
+  </header>
 
-  <a href="admin.html" class="admin-link">
-    Panel organizatora
-  </a>
-</header>
+  <main class="container">
 
-<main class="container">
+    <div class="toolbar">
+      <input
+        type="search"
+        id="searchInput"
+        placeholder="🔎 Szukaj książki..."
+      >
 
-  <div class="toolbar">
-    <input
-      id="search"
-      type="search"
-      placeholder="🔎 Szukaj książki, przedmiotu lub klasy..."
-    >
+      <select id="filterSelect">
+        <option value="all">Wszystkie</option>
+        <option value="available">Dostępne</option>
+        <option value="sold">Sprzedane</option>
+      </select>
+    </div>
 
-    <select id="filter">
-      <option value="all">Wszystkie</option>
-      <option value="available">Dostępne</option>
-      <option value="sold">Wyprzedane</option>
-    </select>
-  </div>
+    <div id="booksList" class="books-grid">
+      <p class="loading">Ładowanie książek...</p>
+    </div>
 
-  <div id="status" class="status">
-    Ładowanie książek...
-  </div>
+  </main>
 
-  <section id="books" class="books-grid"></section>
+  <footer>
+    <a href="admin.html">Panel organizatora</a>
+  </footer>
 
-</main>
+  <script type="module">
 
-<script type="module">
+    import {
+      initializeApp
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDydhZ5DRkS8uqQCwl4GS9jdecxpMBrvLw",
-  authDomain: "kiermasz-edf65.firebaseapp.com",
-  databaseURL: "https://kiermasz-edf65-default-rtdb.firebaseio.com/",
-  projectId: "kiermasz-edf65",
-  storageBucket: "kiermasz-edf65.firebasestorage.app",
-  messagingSenderId: "24113147575",
-  appId: "1:24113147575:web:20c3bee6d1df4451876732"
-};
+    import {
+      getDatabase,
+      ref,
+      onValue
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
-import {
-  initializeApp
-} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    const firebaseConfig = {
+      apiKey: "AIzaSyDydhZ5DRkS8uqQCwl4GS9jdecxpMBrvLw",
+      authDomain: "kiermasz-edf65.firebaseapp.com",
+      projectId: "kiermasz-edf65",
+      storageBucket: "kiermasz-edf65.firebasestorage.app",
+      messagingSenderId: "24113147575",
+      appId: "1:24113147575:web:20c3bee6d1df4451876732"
+    };
 
-import {
-  getDatabase,
-  ref,
-  onValue
-} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
 
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const booksRef = ref(database, "books");
+    const booksRef = ref(database, "books");
 
-const booksContainer = document.getElementById("books");
-const status = document.getElementById("status");
-const search = document.getElementById("search");
-const filter = document.getElementById("filter");
+    const booksList = document.getElementById("booksList");
+    const searchInput = document.getElementById("searchInput");
+    const filterSelect = document.getElementById("filterSelect");
 
-let books = [];
+    let books = [];
 
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replace(/[&<>"']/g, character => {
-      const entities = {
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;"
-      };
+    function escapeHTML(text) {
+      if (text === undefined || text === null) return "";
 
-      return entities[character];
-    });
-}
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
 
-function renderBooks() {
+    function formatPrice(book) {
 
-  const query = search.value.trim().toLowerCase();
-  const selectedFilter = filter.value;
+      // Nowe książki — cena od / do
+      if (book.priceFrom !== undefined && book.priceFrom !== null) {
 
-  const filteredBooks = books.filter(book => {
+        const from = Number(book.priceFrom);
+        const to = Number(book.priceTo ?? book.priceFrom);
 
-    const text = `
-      ${book.title || ""}
-      ${book.subject || ""}
-      ${book.className || ""}
-    `.toLowerCase();
+        if (from === to) {
+          return `${from.toFixed(2).replace(".", ",")} zł`;
+        }
 
-    const matchesSearch = text.includes(query);
+        return `${from.toFixed(2).replace(".", ",")}–${to.toFixed(2).replace(".", ",")} zł`;
+      }
 
-    const stock = Number(book.stock || 0);
+      // Stare książki — pojedyncza cena
+      if (book.price !== undefined && book.price !== null) {
+        return `${Number(book.price).toFixed(2).replace(".", ",")} zł`;
+      }
 
-    const matchesFilter =
-      selectedFilter === "all" ||
-      (selectedFilter === "available" && stock > 0) ||
-      (selectedFilter === "sold" && stock <= 0);
+      return "Cena nie podana";
+    }
 
-    return matchesSearch && matchesFilter;
-  });
+    function renderBooks() {
 
-  status.textContent =
-    `${filteredBooks.length} ${
-      filteredBooks.length === 1
-        ? "książka"
-        : "książek"
-    }`;
+      const search = searchInput.value.toLowerCase().trim();
+      const filter = filterSelect.value;
 
-  if (filteredBooks.length === 0) {
+      const filteredBooks = books.filter(book => {
 
-    booksContainer.innerHTML = `
-      <div class="empty">
-        📚 Nie znaleziono książek.
-      </div>
-    `;
+        const text = `
+          ${book.title || ""}
+          ${book.subject || ""}
+          ${book.className || ""}
+        `.toLowerCase();
 
-    return;
-  }
+        const matchesSearch = text.includes(search);
 
-  booksContainer.innerHTML =
-    filteredBooks.map(book => {
+        const stock = Number(book.stock || 0);
 
-      const stock = Math.max(
-        0,
-        Number(book.stock || 0)
-      );
+        let matchesFilter = true;
 
-      const price =
-        Number(book.price || 0)
-          .toFixed(2)
-          .replace(".", ",");
+        if (filter === "available") {
+          matchesFilter = stock > 0;
+        }
 
-      return `
-        <article class="book-card ${stock === 0 ? "sold-out" : ""}">
+        if (filter === "sold") {
+          matchesFilter = stock === 0;
+        }
 
-          <div class="book-image">
-            ${
-              book.image
-                ? `
-                  <img
-                    src="${escapeHTML(book.image)}"
-                    alt="${escapeHTML(book.title)}"
-                    loading="lazy"
-                  >
-                `
-                : `
-                  <div class="no-image">
-                    📚
-                  </div>
-                `
-            }
+        return matchesSearch && matchesFilter;
+      });
+
+      if (filteredBooks.length === 0) {
+        booksList.innerHTML = `
+          <div class="empty">
+            <p>😕 Nie znaleziono żadnych książek.</p>
           </div>
+        `;
+        return;
+      }
 
-          <div class="book-content">
+      booksList.innerHTML = filteredBooks.map(book => {
 
-            <div class="tags">
+        const stock = Number(book.stock || 0);
+
+        const stockText =
+          stock > 0
+            ? `Dostępne: ${stock} szt.`
+            : "Sprzedane";
+
+        const stockClass =
+          stock > 0
+            ? "stock available"
+            : "stock sold";
+
+        const imageHTML = book.image
+          ? `
+            <img
+              src="${escapeHTML(book.image)}"
+              alt="${escapeHTML(book.title)}"
+              class="book-image"
+              onerror="this.style.display='none'"
+            >
+          `
+          : `
+            <div class="book-image-placeholder">
+              📚
+            </div>
+          `;
+
+        return `
+          <article class="book-card">
+
+            ${imageHTML}
+
+            <div class="book-info">
+
+              <h2>${escapeHTML(book.title)}</h2>
 
               ${
                 book.subject
-                  ? `<span>${escapeHTML(book.subject)}</span>`
+                  ? `<p><strong>Przedmiot:</strong> ${escapeHTML(book.subject)}</p>`
                   : ""
               }
 
               ${
                 book.className
-                  ? `<span>${escapeHTML(book.className)}</span>`
+                  ? `<p><strong>Klasa:</strong> ${escapeHTML(book.className)}</p>`
                   : ""
               }
 
-            </div>
+              <p class="price">
+                ${formatPrice(book)}
+              </p>
 
-            <h2>
-              ${escapeHTML(book.title)}
-            </h2>
-
-            <div class="book-bottom">
-
-              <strong>
-                ${price} zł
-              </strong>
-
-              ${
-                stock > 0
-                  ? `
-                    <span class="stock available">
-                      Dostępne: ${stock}
-                    </span>
-                  `
-                  : `
-                    <span class="stock unavailable">
-                      WYPRZEDANE
-                    </span>
-                  `
-              }
+              <p class="${stockClass}">
+                ${stockText}
+              </p>
 
             </div>
 
-          </div>
+          </article>
+        `;
 
-        </article>
-      `;
+      }).join("");
+    }
 
-    }).join("");
-}
+    onValue(booksRef, snapshot => {
 
-onValue(
-  booksRef,
+      const data = snapshot.val();
 
-  snapshot => {
+      books = data
+        ? Object.entries(data).map(([id, book]) => ({
+            id,
+            ...book
+          }))
+        : [];
 
-    const data = snapshot.val() || {};
+      books.sort((a, b) =>
+        String(a.title || "").localeCompare(
+          String(b.title || ""),
+          "pl"
+        )
+      );
 
-    books =
-      Object.entries(data)
-        .map(([id, book]) => ({
-          id,
-          ...book
-        }));
+      renderBooks();
+    });
 
-    books.sort(
-      (a, b) =>
-        String(a.title || "")
-          .localeCompare(
-            String(b.title || ""),
-            "pl"
-          )
-    );
+    searchInput.addEventListener("input", renderBooks);
+    filterSelect.addEventListener("change", renderBooks);
 
-    renderBooks();
-  },
-
-  error => {
-
-    console.error(error);
-
-    status.textContent =
-      "Nie udało się połączyć z bazą danych.";
-
-    booksContainer.innerHTML = `
-      <div class="empty">
-        ❌ Wystąpił problem z połączeniem.
-      </div>
-    `;
-  }
-);
-
-search.addEventListener("input", renderBooks);
-filter.addEventListener("change", renderBooks);
-
-</script>
+  </script>
 
 </body>
 </html>
